@@ -84,6 +84,111 @@ add_mongodb_gpg_key() {
   echo "Added MongoDB $version GPG key to system keyring"
 }
 
+# Function to directly install MongoDB for newer Ubuntu versions
+install_mongodb_direct() {
+  echo "Installing MongoDB directly on Ubuntu 24.04..."
+  
+  # Create temporary directory for MongoDB installation
+  local TEMP_DIR=$(mktemp -d)
+  cd "$TEMP_DIR"
+  
+  # Install dependencies
+  sudo apt-get install -y libcurl4 openssl liblzma5
+  
+  # Download MongoDB 7.0 for Ubuntu 22.04 (Jammy)
+  echo "Downloading MongoDB Community Edition..."
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-server_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-mongos_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-database-tools-extra_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-tools_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-database_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org_7.0.6_amd64.deb
+  wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/7.0/multiverse/binary-amd64/mongodb-org-shell_7.0.6_amd64.deb
+  
+  # Install downloaded packages
+  echo "Installing MongoDB packages..."
+  sudo dpkg -i mongodb-org*.deb || true
+  sudo apt-get install -f -y
+  
+  # Create data directory if it doesn't exist
+  sudo mkdir -p /var/lib/mongodb
+  if getent passwd mongodb >/dev/null; then
+    sudo chown -R mongodb:mongodb /var/lib/mongodb
+  fi
+
+  # Create log directory if it doesn't exist
+  sudo mkdir -p /var/log/mongodb
+  if getent passwd mongodb >/dev/null; then
+    sudo chown -R mongodb:mongodb /var/log/mongodb
+  fi
+
+  # Create systemd service file
+  echo "Creating MongoDB systemd service file..."
+  sudo tee /etc/systemd/system/mongod.service > /dev/null << EOF
+[Unit]
+Description=MongoDB Database Server
+After=network.target
+
+[Service]
+Type=forking
+User=mongodb
+ExecStart=/usr/bin/mongod --config /etc/mongod.conf
+PIDFile=/var/run/mongodb/mongod.pid
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # Create default config if it doesn't exist
+  if [ ! -f /etc/mongod.conf ]; then
+    echo "Creating MongoDB configuration file..."
+    sudo tee /etc/mongod.conf > /dev/null << EOF
+# mongod.conf
+
+# Where and how to store data.
+storage:
+  dbPath: /var/lib/mongodb
+  journal:
+    enabled: true
+
+# Where to write logging data.
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+
+# Network interfaces
+net:
+  port: 27017
+  bindIp: 127.0.0.1
+
+# Process management options
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+EOF
+  fi
+  
+  # Clean up
+  cd -
+  rm -rf "$TEMP_DIR"
+  
+  # Enable and start MongoDB service
+  sudo systemctl daemon-reload
+  sudo systemctl enable mongod
+  sudo systemctl start mongod
+
+  # Wait a moment for MongoDB to start
+  sleep 2
+
+  # Return success if mongod is now available and running
+  if command_exists mongod && systemctl is-active --quiet mongod; then
+    echo "MongoDB installation successful and service is running."
+    return 0
+  else
+    echo "MongoDB installation failed or service not running."
+    return 1
+  fi
+}
 # Function to install system dependencies
 install_dependencies() {
   echo -e "\n${BOLD}Installing system dependencies...${RESET}"
@@ -96,6 +201,12 @@ install_dependencies() {
   else
     echo -e "${RED}Unable to detect operating system. Please install dependencies manually.${RESET}"
     return 1
+  fi
+
+  # Make sure bc is installed for version comparison
+  if ! command_exists bc; then
+    echo "Installing bc for version comparison..."
+    sudo apt-get install -y bc 2>/dev/null || sudo yum install -y bc 2>/dev/null || true
   fi
   
   # Install for Debian/Ubuntu
@@ -136,14 +247,27 @@ install_dependencies() {
 
         # Try to install MongoDB 7.0
         if ! sudo apt-get install -y mongodb-org; then
-          echo "Failed to install MongoDB 7.0. Trying MongoDB Community Edition..."
-          # Fall back to regular MongoDB for Ubuntu
-          sudo apt-get install -y mongodb
+          echo "Failed to install MongoDB 7.0 from repository."
 
-          # Check if installation was successful
-          if ! command_exists mongod; then
-            echo "Please install MongoDB manually. Visit https://www.mongodb.com/docs/manual/administration/install-on-linux/"
-            return 1
+          # If Ubuntu 24.04 or newer, try direct installation
+          if [[ "$OS" == *"Ubuntu"* ]] && (( $(echo "$VER >= 24.04" | bc -l) )); then
+            echo "Detected Ubuntu 24.04 or newer. Using direct installation method..."
+            if install_mongodb_direct; then
+              echo "Direct MongoDB installation successful."
+            else
+              echo "Direct MongoDB installation failed. Please install MongoDB manually."
+              return 1
+            fi
+          else
+            # Fall back to regular MongoDB for Ubuntu
+            echo "Trying MongoDB Community Edition..."
+            sudo apt-get install -y mongodb
+
+            # Check if installation was successful
+            if ! command_exists mongod; then
+              echo "Please install MongoDB manually. Visit https://www.mongodb.com/docs/manual/administration/install-on-linux/"
+              return 1
+            fi
           fi
         fi
       fi
