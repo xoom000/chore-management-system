@@ -1,7 +1,7 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const schedule = require('node-schedule');
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -12,25 +12,37 @@ const app = express();
 // Middleware
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Initialize SQLite database with Sequelize
+const db = require('./backend/sequelize');
+
+// Connect to SQLite database
+db.initializeDatabase()
+  .then(() => console.log('Connected to SQLite database'))
+  .catch(err => console.error('Database connection error:', err));
 
 // Import routes
-const userRoutes = require('./backend/routes/users');
-const choreRoutes = require('./backend/routes/chores');
-const notificationRoutes = require('./backend/routes/notifications');
-const routerControlRoutes = require('./backend/routes/routerControl');
+const userRoutes = require('./backend/routes/usersSequelize');
+// Note: The following routes would need to be updated to use Sequelize as well
+// For now, keeping the imports but commenting that they need updates
+const choreRoutes = require('./backend/routes/chores'); // Needs Sequelize update
+const notificationRoutes = require('./backend/routes/notifications'); // Needs Sequelize update
+const routerControlRoutes = require('./backend/routes/routerControl'); // Needs Sequelize update
 
 // Use routes
 app.use('/api/users', userRoutes);
-app.use('/api/chores', choreRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/router', routerControlRoutes);
+// Temporarily comment out routes that need to be updated to Sequelize
+// app.use('/api/chores', choreRoutes);
+// app.use('/api/notifications', notificationRoutes);
+// app.use('/api/router', routerControlRoutes);
 
-// Schedule notification job
-require('./backend/services/notificationScheduler');
+// Add a test route
+app.get('/', (req, res) => {
+  res.json({ message: 'Chore Management System API (SQLite Version)' });
+});
+
+// Temporarily comment out the notification scheduler
+// as it depends on MongoDB models
+// require('./backend/services/notificationScheduler');
 
 // Start server
 const PORT = process.env.PORT || 3000;
