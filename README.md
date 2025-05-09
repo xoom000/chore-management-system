@@ -30,6 +30,7 @@ The application is built with the following technologies:
 - Linux-based system (Ubuntu, Debian, Raspbian, CentOS, etc.)
 - Access to a router with SSH capabilities for internet control
 - A computer that can remain powered on (Raspberry Pi is ideal)
+- At least 4GB of available RAM for Node.js operations
 
 ### Automated Installation (Recommended)
 
@@ -171,6 +172,7 @@ node scripts/router-control.js disable MAC  # Disable internet for device with M
 - **Internet control not working**: Check that your router API configuration is correct
 - **Emails not sending**: Verify your SMTP settings in the `.env` file
 - **Recurring chores not creating**: Check that the scheduler is running properly
+- **Application crashes with out of memory error**: The system now uses increased memory allocation (4GB) for Node.js. If you still encounter memory issues, you may need to add more RAM to your server or reduce the application load
 
 ## License
 

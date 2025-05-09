@@ -5,6 +5,7 @@ This guide will walk you through setting up the entire household chore managemen
 ## 1. Hardware Requirements
 
 - A computer/server to host the application (Raspberry Pi 4 or better recommended)
+- At least 4GB of RAM for Node.js memory requirements
 - Always-on internet connection
 - Router with API access for internet control
 
@@ -109,7 +110,7 @@ After=network.target mongod.service
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/chores
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node --max-old-space-size=4096 server.js
 Restart=on-failure
 
 [Install]
@@ -165,6 +166,7 @@ To make the internet control work:
 - Check MongoDB is running: `sudo systemctl status mongod`
 - Check log files: `journalctl -u chores`
 - Verify .env configuration is correct
+- Check for memory errors: If you see "JavaScript heap out of memory" errors, make sure the Node.js memory limit is properly set with `--max-old-space-size=4096` in your startup command
 
 ### If internet control doesn't work:
 - Run the test script: `node scripts/router-control.js list`

@@ -355,7 +355,7 @@ After=network.target mongod.service
 Type=simple
 User=$SYSTEM_USER
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$(which node) $INSTALL_DIR/server.js
+ExecStart=$(which node) --max-old-space-size=4096 $INSTALL_DIR/server.js
 Restart=on-failure
 Environment=NODE_ENV=production
 
