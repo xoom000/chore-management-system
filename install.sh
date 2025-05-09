@@ -67,6 +67,23 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Function to add MongoDB GPG key properly (handling apt-key deprecation)
+add_mongodb_gpg_key() {
+  local version=$1
+  local key_url="https://www.mongodb.org/static/pgp/server-${version}.asc"
+
+  # Create keyrings directory if it doesn't exist
+  sudo mkdir -p /etc/apt/keyrings
+
+  # Download key and add to keyrings
+  wget -qO- $key_url | sudo gpg --dearmor -o /etc/apt/keyrings/mongodb-${version}.gpg
+
+  # Add proper permissions
+  sudo chmod 644 /etc/apt/keyrings/mongodb-${version}.gpg
+
+  echo "Added MongoDB $version GPG key to system keyring"
+}
+
 # Function to install system dependencies
 install_dependencies() {
   echo -e "\n${BOLD}Installing system dependencies...${RESET}"
@@ -110,10 +127,25 @@ install_dependencies() {
         sudo apt-get install -y mongodb
       else
         # x86/x64 architecture
-        wget -qO - https://www.mongodb.org/static/pgp/server-5.0.asc | sudo apt-key add -
-        echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/5.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-5.0.list
+        # Add MongoDB GPG key using the new keyring approach
+        add_mongodb_gpg_key "7.0"
+
+        # Create MongoDB repository file
+        echo "deb [signed-by=/etc/apt/keyrings/mongodb-7.0.gpg] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
         sudo apt-get update
-        sudo apt-get install -y mongodb-org
+
+        # Try to install MongoDB 7.0
+        if ! sudo apt-get install -y mongodb-org; then
+          echo "Failed to install MongoDB 7.0. Trying MongoDB Community Edition..."
+          # Fall back to regular MongoDB for Ubuntu
+          sudo apt-get install -y mongodb
+
+          # Check if installation was successful
+          if ! command_exists mongod; then
+            echo "Please install MongoDB manually. Visit https://www.mongodb.com/docs/manual/administration/install-on-linux/"
+            return 1
+          fi
+        fi
       fi
       
       echo "Starting MongoDB service..."
@@ -145,16 +177,27 @@ install_dependencies() {
       echo "Installing MongoDB..."
       
       # Create MongoDB repo file
-      sudo tee /etc/yum.repos.d/mongodb-org-5.0.repo << EOF
-[mongodb-org-5.0]
+      sudo tee /etc/yum.repos.d/mongodb-org-7.0.repo << EOF
+[mongodb-org-7.0]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/5.0/x86_64/
+baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/7.0/x86_64/
 gpgcheck=1
 enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-5.0.asc
+gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
 EOF
       
-      sudo yum install -y mongodb-org
+      # Try to install MongoDB 7.0
+      if ! sudo yum install -y mongodb-org; then
+        echo "Failed to install MongoDB 7.0. Trying alternative approach..."
+
+        # Check if mongodb package is available in base repos
+        if sudo yum list mongodb &>/dev/null; then
+          sudo yum install -y mongodb
+        else
+          echo "Please install MongoDB manually. Visit https://www.mongodb.com/docs/manual/administration/install-on-linux/"
+          return 1
+        fi
+      fi
       
       echo "Starting MongoDB service..."
       sudo systemctl start mongod
